@@ -1,1 +1,359 @@
+# ===========================================================
+#  WENTYLATOR DEYE – PWM (IRL540N, Vemos D1 mini / ESP8266)
+#  Tryb "HOLD-LAST-SPEED": gdy brak nowych danych z HA – trzymaj ostatnią moc.
+#
+#  PINOUT (patrząc na napis IRL540N):
+#    1 = G (Gate)   → D5 (GPIO14) na D1 mini
+#    2 = D (Drain)  → minus (–) wentylatora
+#    3 = S (Source) → GND (wspólna masa 24 V i D1 mini)
+#
+#  Połączenia zasilania:
+#    +24 V → plus wentylatora
+#    GND 24 V ↔ GND D1 mini ↔ Source MOSFET-a (pin 3)
+#
+#  Ulepszenia sprzętowe (opcjonalne, ale zalecane):
+#    • 100 Ω szeregowo w linii GATE
+#    • 100 kΩ z GATE do GND (pulldown – stabilny start)
+#    • 100–470 µF + 100 nF między +24 V a GND przy wentylatorze (tłumienie szpilek)
+#    • dioda „flyback” równolegle do wentylatora (katoda do +24 V)
+#
+#  SPIS CZĘŚCI:
+#    • 1× Vemos D1 mini (ESP8266)
+#    • 1× MOSFET logic-level IRL540N (N-kanał)
+#    • 1× wentylator(y) 24 V (do ~0,6 A każdy)
+#    • zasilacz 24 V odpowiedniej mocy
+#    • (opcjonalnie) R=100 Ω, R=100 kΩ, C=100 nF, C=220–470 µF, dioda Schottky (np. SS54)
+#
+#  BEZPIECZNE UDOSTĘPNIENIE KODU:
+#    • KLUCZ API, hasło OTA i dane Wi-Fi są w !secret – wpisz własne w secrets.yaml.
+#    • Możesz też włączyć hasło do panelu WWW (sekcja web_server → auth).
+# ===========================================================
 
+esphome:
+  name: wentylator-deye
+  friendly_name: WENTYLATOR DEYE
+  on_boot:
+    priority: 600
+    then:
+      # 1) ustaw częstotliwość z suwaka
+      - script.execute: apply_pwm_freq
+      # 2) odtwórz ostatnią moc (trzymaną w pamięci flash)
+      - script.execute: set_last_speed_output
+
+esp8266:
+  board: d1_mini
+  restore_from_flash: true     # zapamiętuj wartości (globals/number itp.)
+
+logger:
+
+# —— API do Home Assistant — użyj własnego klucza w secrets.yaml ——
+api:
+  encryption:
+    key: !secret api_encryption_key
+  reboot_timeout: 0s           # nie restartuj urządzenia, gdy HA rozłączone
+
+# —— Aktualizacje OTA — ustaw własne hasło w secrets.yaml ——
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# —— Wi-Fi — dane w secrets.yaml; wyłączamy auto-rebooty ——
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  reboot_timeout: 0s
+  power_save_mode: none
+  ap:                           # fallback AP (możesz zmienić/wyłączyć)
+    ssid: "Wentylator-Deye Fallback Hotspot"
+    password: "ZMIEN_TO_Fallback"
+
+captive_portal:
+
+# —— Prosty panel WWW na IP urządzenia (opcjonalne logowanie) ——
+web_server:
+  port: 80
+  # auth:
+  #   username: admin
+  #   password: "WSTAW_SWOJE_HASLO"
+
+# ── CZUJNIKI ─────────────────────────────────────────────────────────
+
+# 1) Temperatura z HA – numeric
+sensor:
+  - platform: homeassistant
+    id: deye_temp_num
+    entity_id: sensor.deye_temperature
+    name: "Deye temperatura (HA)"
+    accuracy_decimals: 1
+    internal: false
+    on_value:
+      - script.execute: apply_fan_speed   # przelicz wyłącznie, gdy przyjdą nowe dane
+
+  # 2) Podgląd aktualnej mocy (%) – wygodne w HA
+  - platform: template
+    id: fan_power_pct_sensor
+    name: "Wentylator - aktualna moc (%)"
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return id(last_speed) * 100.0f;
+
+  # 3) Uptime – niezbędne tylko, jeśli chcesz dalszej diagnostyki
+  - platform: uptime
+    id: uptime_s
+    update_interval: 5s
+
+# 4) Tekstowy fallback temperatury z HA (np. "47,2 °C")
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "WENTYLATOR IP"
+    ssid:
+      name: "WENTYLATOR SSID"
+
+  - platform: homeassistant
+    id: deye_temp_raw
+    entity_id: sensor.deye_temperature
+    internal: true
+    on_value:
+      - script.execute: apply_fan_speed
+
+# ── WYJŚCIE PWM (D5 → GATE IRL540N) ─────────────────────────────────
+output:
+  - platform: esp8266_pwm
+    id: fan_pwm
+    pin: D5
+    frequency: 1000 Hz   # wartość startowa; po starcie suwak nadpisze
+
+# ── SUWAKI / USTAWIENIA ─────────────────────────────────────────────
+number:
+  # Częstotliwość PWM (Hz) – pomaga wyeliminować piszczenie
+  - platform: template
+    id: pwm_freq_hz
+    name: "PWM częstotliwość (Hz)"
+    unit_of_measurement: "Hz"
+    min_value: 100
+    max_value: 30000
+    step: 100
+    initial_value: 1000
+    restore_value: true
+    optimistic: true
+    on_value:
+      then:
+        - script.execute: apply_pwm_freq
+
+  # Progi temperatury (HOLD-LAST-SPEED: sama zmiana progu nie rusza wentylatora,
+  # dopiero nowy odczyt temperatury lub przycisk „Zastosuj teraz”)
+  - platform: template
+    id: t1
+    name: "Prog temp 1 (°C)"
+    unit_of_measurement: "°C"
+    min_value: 20
+    max_value: 90
+    step: 1
+    initial_value: 35
+    restore_value: true
+    optimistic: true
+
+  - platform: template
+    id: t2
+    name: "Prog temp 2 (°C)"
+    unit_of_measurement: "°C"
+    min_value: 20
+    max_value: 90
+    step: 1
+    initial_value: 40
+    restore_value: true
+    optimistic: true
+
+  - platform: template
+    id: t3
+    name: "Prog temp 3 (°C)"
+    unit_of_measurement: "°C"
+    min_value: 20
+    max_value: 90
+    step: 1
+    initial_value: 45
+    restore_value: true
+    optimistic: true
+
+  - platform: template
+    id: t4
+    name: "Prog temp 4 (°C)"
+    unit_of_measurement: "°C"
+    min_value: 20
+    max_value: 90
+    step: 1
+    initial_value: 50
+    restore_value: true
+    optimistic: true
+
+  - platform: template
+    id: t5
+    name: "Prog temp 5 (°C)"
+    unit_of_measurement: "°C"
+    min_value: 20
+    max_value: 90
+    step: 1
+    initial_value: 55
+    restore_value: true
+    optimistic: true
+
+  # Moce (%) przy progach T1…T5
+  - platform: template
+    id: p1
+    name: "Moc przy T1 (%)"
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 20
+    restore_value: true
+    optimistic: true
+
+  - platform: template
+    id: p2
+    name: "Moc przy T2 (%)"
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 40
+    restore_value: true
+    optimistic: true
+
+  - platform: template
+    id: p3
+    name: "Moc przy T3 (%)"
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 60
+    restore_value: true
+    optimistic: true
+
+  - platform: template
+    id: p4
+    name: "Moc przy T4 (%)"
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 80
+    restore_value: true
+    optimistic: true
+
+  - platform: template
+    id: p5
+    name: "Moc przy T5 (%)"
+    unit_of_measurement: "%"
+    min_value: 0
+    max_value: 100
+    step: 1
+    initial_value: 100
+    restore_value: true
+    optimistic: true
+
+# ── PRZYCISKI ───────────────────────────────────────────────────────
+button:
+  # Ręczne przeliczenie (np. po zmianie progów/mocy)
+  - platform: template
+    name: "Zastosuj teraz (przelicz)"
+    on_press:
+      - script.execute: apply_fan_speed
+
+  # Restart (do diagnostyki)
+  - platform: restart
+    id: restart_btn
+    name: "Restart urządzenia"
+    entity_category: diagnostic
+
+# ── ZMIENNE TRWAŁE ─────────────────────────────────────────────────
+globals:
+  - id: last_speed               # 0.0–1.0 – ostatnio ustawione PWM
+    type: float
+    restore_value: true
+    initial_value: '0.0'
+
+# ── SKRYPTY ────────────────────────────────────────────────────────
+script:
+  # Po starcie odtwórz ostatnią moc (HOLD-LAST-SPEED)
+  - id: set_last_speed_output
+    then:
+      - lambda: |-
+          float duty = id(last_speed);
+          if (duty < 0.0f) duty = 0.0f;
+          if (duty > 1.0f) duty = 1.0f;
+          id(fan_pwm).set_level(duty);
+          ESP_LOGI("fan", "Restore last duty: %.0f%%", duty*100.0f);
+
+  # Ustawianie częstotliwości PWM (z suwaka)
+  - id: apply_pwm_freq
+    then:
+      - lambda: |-
+          int freq = (int) id(pwm_freq_hz).state;
+          if (freq < 100)   freq = 100;
+          if (freq > 40000) freq = 40000;
+          id(fan_pwm).set_frequency(freq);
+          ESP_LOGI("fan", "PWM freq set to %d Hz", freq);
+
+  # Główna logika – liczymy nową moc WYŁĄCZNIE, gdy przyjdą świeże dane z HA
+  - id: apply_fan_speed
+    then:
+      - lambda: |-
+          // 1) Numeric z HA
+          float temp = id(deye_temp_num).state;
+
+          // 2) Fallback – parsowanie tekstu (np. "47,2 °C")
+          if (isnan(temp)) {
+            auto s = std::string(id(deye_temp_raw).state.c_str());
+            if (!s.empty()) {
+              for (auto &ch : s) if (ch == ',') ch = '.';
+              std::string filt;
+              for (char c : s) {
+                if ((c >= '0' && c <= '9') || c == '.' || c == '-') filt += c;
+              }
+              if (!filt.empty()) temp = atof(filt.c_str());
+            }
+          }
+
+          // 3) Nadal brak liczby? – nic nie zmieniaj (trzymaj ostatnią prędkość)
+          if (isnan(temp)) {
+            ESP_LOGW("fan", "Brak aktualnej temp z HA – utrzymuję duty: %.0f%%", id(last_speed)*100.0f);
+            return;
+          }
+
+          // 4) Wyznacz moc z progów i mocy T1..T5
+          const float tt1 = id(t1).state;
+          const float tt2 = id(t2).state;
+          const float tt3 = id(t3).state;
+          const float tt4 = id(t4).state;
+          const float tt5 = id(t5).state;
+
+          const float pp1 = id(p1).state;
+          const float pp2 = id(p2).state;
+          const float pp3 = id(p3).state;
+          const float pp4 = id(p4).state;
+          const float pp5 = id(p5).state;
+
+          float speed_pct = 0.0f;
+          if (temp >= tt1) speed_pct = pp1;
+          if (temp >= tt2) speed_pct = pp2;
+          if (temp >= tt3) speed_pct = pp3;
+          if (temp >= tt4) speed_pct = pp4;
+          if (temp >= tt5) speed_pct = pp5;
+
+          float duty = speed_pct / 100.0f;
+          if (duty < 0.0f) duty = 0.0f;
+          if (duty > 1.0f) duty = 1.0f;
+
+          // 5) Aktualizuj PWM tylko, gdy różnica > 0,5% (redukcja „mielenia”)
+          if (fabsf(id(last_speed) - duty) > 0.005f) {
+            id(last_speed) = duty;
+            id(fan_pwm).set_level(duty);
+            ESP_LOGI("fan", "Temp: %.1f°C -> duty: %.0f%%", temp, duty*100.0f);
+          } else {
+            ESP_LOGV("fan", "Temp: %.1f°C -> duty bez zmian: %.0f%%", temp, duty*100.0f);
+          }
