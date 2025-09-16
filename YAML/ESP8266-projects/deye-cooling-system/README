@@ -1,1 +1,64 @@
+# Sterownik PWM wentylatorów 24 V dla falownika (ESPHome + D1 mini + IRL540N)
+
+Sterowanie wentylatorami 24 V na podstawie temperatury z Home Assistanta.  
+Sprzęt: **Vemos D1 mini (ESP8266)** + **IRL540N** (low-side PWM).
+
+## Funkcje
+
+- 5 progów temperatury (T1…T5) i przypisane im moce (P1…P5)
+- suwak **częstotliwości PWM** (100–30 000 Hz) – pomaga wyeliminować piszczenie
+- **web panel** (wbudowany `web_server`) – sterowanie także bez HA
+- tryb **HOLD-LAST-SPEED** – przy braku nowych danych z HA trzyma ostatnią moc
+- **pamięć ustawień** (po restarcie wraca ostatnia konfiguracja)
+- brak wymuszonych auto-restartów (Wi-Fi/API) – ciągła praca urządzenia
+
+---
+
+## Wymagania / części
+
+- 1× **Vemos D1 mini (ESP8266)**
+- 1× **IRL540N** (N-MOSFET, logic-level)
+- Wentylator(y) **24 V** (np. ~0,6 A), zasilacz 24 V
+- (opcjonalnie, ale zalecane):
+  - rezystor **100 Ω** w szereg z GATE
+  - rezystor **100 kΩ** z GATE→GND (pulldown)
+  - kondensatory **100 nF** + **220–470 µF** między +24 V↔GND przy wentylatorze
+  - dioda Schottky (np. **SS54**) równolegle do wentylatora
+
+---
+
+## Pinout / okablowanie
+
+**IRL540N (patrząc na napis):**
+- **1 = G (Gate)** → **D5 / GPIO14** D1 mini  
+- **2 = D (Drain)** → **minus (–)** wentylatora  
+- **3 = S (Source)** → **GND** (wspólna masa 24 V i D1 mini)
+
+**Zasilanie / połączenia:**
+- **+24 V** → plus wentylatora  
+- **GND 24 V** ↔ **GND D1 mini** ↔ **Source MOSFET-a (pin 3)**  
+- **Uwaga:** D1 mini zasil z **5 V** (USB/przetwornica 24→5 V), **nie** z 24 V.
+
+---
+
+## Jak to działa
+
+- Z HA pobierana jest temperatura z encji: **`sensor.deye_temperature`**.
+- Suwakami ustawiasz progi **T1…T5 (°C)** i moce **P1…P5 (%)**.
+- Po przekroczeniu progu stosowana jest przypisana mu moc.
+- Suwak **„PWM częstotliwość (Hz)”** zmienia częstotliwość w locie.
+- Gdy nie ma nowych danych z HA — sterownik **utrzymuje ostatnią moc**.
+- Po restarcie od razu **odtwarza ostatnie PWM** i żądaną częstotliwość.
+
+---
+
+## Konfiguracja sekretów
+
+W `secrets.yaml` dodaj:
+```yaml
+wifi_ssid: "Twoje_SSID"
+wifi_password: "Twoje_haslo"
+api_encryption_key: "WSTAW_TUTAJ_klucz_API_z_ESPHome"   # Settings → Encryption key
+ota_password: "WSTAW_TUTAJ_mocne_haslo_OTA"
+
 
