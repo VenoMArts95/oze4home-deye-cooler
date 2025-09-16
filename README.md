@@ -1,5 +1,8 @@
 # 🌱 OZE4HOME – Projekty Home Assistant / ESPHome / Arduino
 
+Materiał na Youtube: https://youtu.be/y7c3QlNg6KM?si=hXXTnhf1oBnGjrr1
+
+
 To repozytorium jest oficjalnym zbiorem kodów źródłowych, konfiguracji i projektów prezentowanych na kanale **OZE4HOME**.  
 Znajdziesz tu:
 - Konfiguracje **Home Assistant** (YAML)
